@@ -180,10 +180,7 @@ def plot_single_frame(frame_id, full_env_image, agents_partial_images, actions, 
 
         # Write the current action and rewards in the space between subplots
         text_horizontal_loc = full_obs_proportion + agent_proportion * i + agent_proportion * 0.2
-        if predicted_actions is not None:
-            text_vertical_loc = 0.75
-        else:
-            text_vertical_loc = 0.65
+        text_vertical_loc = 0.65
         act_text = 'a^{}_t={}: {}'.format(i, frame_id, action_dict[int(actions[i])])  # action
         fig.text(text_horizontal_loc, text_vertical_loc, act_text, fontsize=10)
         r_text = 'R_t={}: {}'.format(frame_id, rewards[frame_id, i])

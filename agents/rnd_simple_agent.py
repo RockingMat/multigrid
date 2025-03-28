@@ -7,10 +7,10 @@ import torch.optim as optim
 from my_utils import train_model
 
     
-class Agent_Simple(nn.Module):
+class Agent_Simple_RND(nn.Module):
     def __init__(self, config):
         self.config = config
-        super(Agent_Simple, self).__init__()
+        super(Agent_Simple_RND, self).__init__()
         self.fc = nn.Sequential(
             nn.Linear(config.input_dim, 128),
             nn.ReLU(),

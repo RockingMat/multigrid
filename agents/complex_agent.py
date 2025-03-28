@@ -1,38 +1,30 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
+from my_utils import train_model
+
+NUM_DIRECTIONS = 4
 
 class Agent_Complex(nn.Module):
     def __init__(self, config):
         super(Agent_Complex, self).__init__()
         self.config = config
-        kernel_size = 3
-        n_actions = 3
-        directions = 4
-        direction_dim = 8
 
         self.cnn = nn.Sequential(
-            # First convolution layer with padding to keep 5x5 dimensions
-            nn.Conv2d(3, 64, kernel_size=kernel_size, stride=1, padding=1),  # -> (B, 64, 5, 5)
+            nn.Conv2d(3, 64, kernel_size=config.kernel_size, stride=1, padding=1),  # -> (B, 64, 5, 5)
             nn.ReLU(),
-            # Second convolution layer to further combine features
-            nn.Conv2d(64, 64, kernel_size=kernel_size, stride=1, padding=1),  # -> (B, 64, 5, 5)
+            nn.Conv2d(64, 64, kernel_size=config.kernel_size, stride=1, padding=1),  # -> (B, 64, 5, 5)
             nn.ReLU(),
             nn.Flatten(),  # (B, 64*5*5 = 1600)
             nn.Linear(64 * 5 * 5, 128),
             nn.ReLU()
         )
 
-        # Direction embedding remains similar to before
-        self.direction_embed = nn.Embedding(directions, direction_dim)
+        self.direction_embed = nn.Embedding(NUM_DIRECTIONS, config.fc_direction)
 
-        # Actor and critic heads that combine CNN and direction embeddings
-        self.actor_head = nn.Linear(128 + direction_dim, n_actions)
-        self.critic_head = nn.Linear(128 + direction_dim, 1)
-        
-        # Add an optimizer to mimic simple_agent behavior
+        self.actor_head = nn.Linear(128 + config.fc_direction, config.action_dim)
+        self.critic_head = nn.Linear(128 + config.fc_direction, 1)
         self.optimizer = optim.Adam(self.parameters(), lr=config.learning_rate)
         
     def forward(self, image, direction):
@@ -42,7 +34,7 @@ class Agent_Complex(nn.Module):
         """
         if direction.dim() > 1:
             direction = direction.squeeze(-1)
-        # Permute image from (B, H, W, C) to (B, C, H, W)
+        # (B, H, W, C) -> (B, C, H, W)
         c = self.cnn(image.permute(0, 3, 1, 2).float())
         d = self.direction_embed(direction.long())
         x = torch.cat([c, d], dim=-1)
@@ -73,3 +65,8 @@ class Agent_Complex(nn.Module):
             'model_state_dict': self.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict()
         }, save_path)
+    
+    def train_model(self, obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, 
+                    returns_tensor, advantages_tensor, old_values_tensor, ep):
+        train_model(self, obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, 
+                    returns_tensor, advantages_tensor, old_values_tensor, ep)
