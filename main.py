@@ -3,6 +3,7 @@ import random
 import torch
 import numpy as np
 import wandb
+from multiagent_metacontroller import MultiAgent
 
 import utils
 
@@ -33,13 +34,16 @@ def parse_args():
       '--load_checkpoint_from',  type=str, default=None,
       help="Path to find model checkpoints to load")
   parser.add_argument(
-        '--wandb_project', type=str, default='',
-        help="Name of wandb project. Choose from 'multiagent_copying_ii' for 2 experts or 'multiagent_copying_1_expert_1_novice'. ")
-
+      '--wandb_project', type=str, default='',
+      help="Name of wandb project. Choose from 'multiagent_copying_ii' for 2 experts or 'multiagent_copying_1_expert_1_novice'. ")
+  parser.add_argument(
+      '--with_expert', action=argparse.BooleanOptionalAction, default=False,
+      help="Whether to use the expert policy."
+  )
   return parser.parse_args()
 
 def get_metacontroller_class(config):
-    raise NotImplementedError("Implement and import a MetaController class!")
+    return MultiAgent
 
 def initialize(mode, env_name, debug, visualize, seed, with_expert, wandb_project):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,7 +73,7 @@ def main(args):
         print('ERROR: when logging to wandb, must specify a valid wandb project.')
         exit(1)
 
-      current_wandb_projects = ['']  # Add your wandb project here
+      current_wandb_projects = ['Single-Agent-MultiGrid-Cluttered-Fixed-Single-6x6-v0', 'MultiGrid-Cluttered-Fixed-15x15']  # Add your wandb project here
       if str(args.wandb_project) not in current_wandb_projects:
           print('ERROR: wandb project not in current projects. '
                 'Change the project name or add your new project to the current projects in current_wandb_projects. '
