@@ -14,9 +14,8 @@ import torch.nn as nn
 import wandb
 
 from utils import plot_single_frame, make_video, extract_mode_from_path
-from agents.simple_agent import Agent_Simple as Agent
+from agents.Agents import Agent_Simple as Agent
 # from agents.complex_agent import Agent_Complex as Agent
-from my_utils import compute_gae, train_model
 
 class MultiAgent():
     """This is a meta agent that creates and controls several sub agents."""
@@ -29,16 +28,12 @@ class MultiAgent():
         self.with_expert = with_expert
         self.debug = debug
         self.n_agents = self.config.n_agents
-        self.zero_reward_count = 0
+        self.total_steps = 0
 
         self.agents = [Agent(config) for _ in range(self.n_agents)]
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         torch.backends.cudnn.deterministic = self.config.torch_deterministic
-
-        self.total_steps = 0  
-        self.episode_data = [[] for _ in range(self.n_agents)]
-        
 
     def run_one_episode(self, env, episode, log=True, train=True, save_model=True, visualize=False):
         obs, info = env.reset()
@@ -60,6 +55,8 @@ class MultiAgent():
             "dones": []
         } for _ in range(self.n_agents)]
         episode_rewards = []
+        if self.config.with_rnd:
+            intrinsic_reward_total = 0
 
         while not done:
             self.total_steps += 1
@@ -85,7 +82,14 @@ class MultiAgent():
             obs, reward, terminations, infos = env.step(actions)
             episode_rewards.append(reward)
             for i in range(self.n_agents):
-                episode_buffers[i]["rewards"].append(reward[i])
+                if self.config.with_rnd:
+                    intrinsic_reward = self.agents[i].rnd.get_intrinsic_reward(torch.tensor(obs["image"][i]), torch.tensor(obs["direction"][i])) * self.config.intrinsic_reward_coef
+                    intrinsic_reward_total += intrinsic_reward
+                    episode_buffers[i]["rewards"].append(reward[i] + intrinsic_reward)
+                    if self.total_steps % self.config.rnd_update_every == 0:
+                        self.agents[i].rnd.update()
+                else:
+                    episode_buffers[i]["rewards"].append(reward[i])
                 episode_buffers[i]["dones"].append(terminations)
 
             if visualize:
@@ -93,11 +97,14 @@ class MultiAgent():
             done = terminations
 
         for i in range(self.n_agents):
-            self.episode_data[i].append(episode_buffers[i])
+            self.agents[i].episode_data.append(episode_buffers[i])
         
         # Logging and checkpointing.
         if log:
-            self.log_one_episode(episode, len(episode_rewards), episode_rewards)
+            if  self.config.with_rnd:
+                self.log_one_episode(episode, len(episode_rewards), episode_rewards, intrinsic_reward_total)
+            else:
+                self.log_one_episode(episode, len(episode_rewards), episode_rewards)
         self.print_terminal_output(episode, np.sum(episode_rewards))
         if save_model:
             # Optionally save each agent's model.
@@ -135,64 +142,13 @@ class MultiAgent():
         viz_data['full_images'].append(env.render('rgb_array'))
         return viz_data
     
-    def collect_episode_data(self, i):
-        batch_obs = []
-        batch_dir = []
-        batch_actions = []
-        batch_old_log_probs = []
-        batch_returns = []
-        batch_advantages = []
-        batch_old_values = []
-
-        for episode in self.episode_data[i]:
-            rewards = np.array(episode["rewards"])
-            values = torch.stack(episode["values"])  # shape: (T,)
-            # Compute GAE and returns for this episode.
-            adv, ret = compute_gae(rewards, values.numpy(), self.config.gamma, self.config.gae_lambda)
-            advantages = torch.tensor(adv, dtype=torch.float32, device=self.device).unsqueeze(-1)
-            returns_tensor = torch.tensor(ret, dtype=torch.float32, device=self.device).unsqueeze(-1)
-
-            obs_tensor = torch.stack(episode["obs_images"])  # shape: (T, ...)
-            dir_tensor = torch.stack(episode["obs_direction"])
-            actions_tensor = torch.stack(episode["actions"]).long()
-            log_probs_tensor = torch.stack(episode["log_probs"]).float()
-            old_values = torch.stack(episode["values"]).float().unsqueeze(1)
-
-            batch_obs.append(obs_tensor)
-            batch_dir.append(dir_tensor)
-            batch_actions.append(actions_tensor)
-            batch_old_log_probs.append(log_probs_tensor)
-            batch_returns.append(returns_tensor)
-            batch_advantages.append(advantages)
-            batch_old_values.append(old_values)
-
-        # Combine all episodes for agent i.
-        obs_tensor = torch.cat(batch_obs, dim=0)
-        dir_tensor = torch.cat(batch_dir, dim=0)
-        actions_tensor = torch.cat(batch_actions, dim=0)
-        old_log_probs_tensor = torch.cat(batch_old_log_probs, dim=0)
-        returns_tensor = torch.cat(batch_returns, dim=0)
-        advantages_tensor = torch.cat(batch_advantages, dim=0)
-        advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
-        old_values_tensor = torch.cat(batch_old_values, dim=0)
-        return obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, returns_tensor, advantages_tensor, old_values_tensor
         
     def update_models(self, ep):
         for i in range(self.n_agents):
-            if len(self.episode_data[i]) == 0:
+            if len(self.agents[i].episode_data) == 0:
                 continue
-            obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, returns_tensor, advantages_tensor, old_values_tensor = self.collect_episode_data(i)
-            self.agents[i].train_model(
-                obs_tensor, 
-                dir_tensor, 
-                actions_tensor, 
-                old_log_probs_tensor, 
-                returns_tensor, 
-                advantages_tensor, 
-                old_values_tensor,
-                ep
-            )
-            self.episode_data[i] = []
+            self.agents[i].train_model(ep)
+            self.agents[i].episode_data = []
 
     
     def train(self, env):
@@ -258,15 +214,27 @@ class MultiAgent():
             "direction": state["direction"][agent_idx]
         }
     
-    def log_one_episode(self, episode, length, rewards):
+    def log_one_episode(self, episode, length, rewards, intrinsic_reward=None):
         """Log episode data to wandb or console."""
         if self.training and not self.debug:
-            wandb.log({
-                "episode": episode,
-                "length": length,
-                "total_reward": np.sum(rewards),
-                "average_reward": np.mean(rewards)
-            })
+            if self.config.with_rnd:
+                wandb.log({
+                    "episode": episode,
+                    "length": length,
+                    "total_reward": np.sum(rewards),
+                    "average_reward": np.mean(rewards),
+                    "intrinsic_reward": intrinsic_reward
+                })
+            else:
+                wandb.log({
+                    "episode": episode,
+                    "length": length,
+                    "total_reward": np.sum(rewards),
+                    "average_reward": np.mean(rewards)
+                })
         else:
-            print(f"Episode {episode}: Length = {length}, Total Reward = {np.sum(rewards)}, Average Reward = {np.mean(rewards)}")
+            if self.config.with_rnd:
+                print(f"Episode {episode}: Length = {length}, Total Reward = {np.sum(rewards)}, Average Reward = {np.mean(rewards)}, Intrinsic Reward = {intrinsic_reward}")
+            else:
+                print(f"Episode {episode}: Length = {length}, Total Reward = {np.sum(rewards)}, Average Reward = {np.mean(rewards)}")
 

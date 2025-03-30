@@ -1,15 +1,23 @@
+#PPO
 learning_rate: 2.5e-4
 lr_annealing: true
 mini_batch_size: 64
 gamma: 0.99
 gae_lambda: 0.95
 clip_vloss: true
-ent_coef: 0.01
+ent_coef: 0.0
 vf_coef: 0.5
 epsilon: 0.2
 num_epochs: 10
 max_grad_norm: 0.5
-target_kl: null
+
+# RND
+with_rnd: true
+intrinsic_reward_coef: 0.5
+rnd_batch_size: 1024
+rnd_update_every: 5096
+
+# extra
 experiment_name: "MultiGrid-PPO"
 load_model_start_path: "models/ppo_model"
 mode: "ppo"

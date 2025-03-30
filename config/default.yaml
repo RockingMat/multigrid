@@ -27,4 +27,7 @@ kernel_size: 3
 fc: 256
 input_dim: 79
 action_dim: 7
+rnd_hidden_size: 256
+rnd_output_size: 64
+rnd_learning_rate: 0.001
 torch_deterministic: True
