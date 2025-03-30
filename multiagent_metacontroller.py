@@ -1,21 +1,10 @@
-from copy import deepcopy
-import gym
-from itertools import count
-import math
-import matplotlib.pyplot as plt
 import numpy as np
 import os
-from PIL import Image
 import torch
-from torch.distributions.categorical import Categorical
-import torch.optim as optim
-import torch.nn.functional as F
-import torch.nn as nn
 import wandb
-
-from utils import plot_single_frame, make_video, extract_mode_from_path
-from agents.Agents import Agent_Simple as Agent
-# from agents.complex_agent import Agent_Complex as Agent
+from utils import plot_single_frame, make_video
+#from agents.Agents import Agent_Simple as Agent
+from agents.LSTM_Agent import Agent_LSTM as Agent
 
 class MultiAgent():
     """This is a meta agent that creates and controls several sub agents."""
@@ -41,6 +30,10 @@ class MultiAgent():
         obs, reward, terminations, infos = env.step(action)
         done = False
 
+        if self.config.with_lstm:
+            for agent in self.agents:
+                agent.reset_hidden_state(batch_size=1)
+
         if visualize:
             viz_data = self.init_visualization_data(env, obs)
 
@@ -61,16 +54,12 @@ class MultiAgent():
         while not done:
             self.total_steps += 1
             actions = []
-            # For each agent, get its own observation and compute action, log_prob, and value.
             for i in range(self.n_agents):
-                # Convert each agent's observation to a tensor.
                 obs_image_tensor = torch.tensor(obs["image"][i], device=self.device)
                 obs_direction_tensor = torch.tensor(obs["direction"][i], device=self.device)
-                # Save the current observation.
                 episode_buffers[i]["obs_images"].append(obs_image_tensor.clone())
                 episode_buffers[i]["obs_direction"].append(obs_direction_tensor.clone())
 
-                # Each agent makes its decision independently.
                 action, log_prob, value = self.agents[i].get_action_and_value(obs_image_tensor.unsqueeze(0), obs_direction_tensor.unsqueeze(0))
                 if train:
                     episode_buffers[i]["actions"].append(action.detach().cpu())
@@ -78,7 +67,6 @@ class MultiAgent():
                     episode_buffers[i]["values"].append(value.detach().cpu())
                 actions.append(action.detach().cpu().numpy())
 
-            # Execute actions for all agents at once.
             obs, reward, terminations, infos = env.step(actions)
             episode_rewards.append(reward)
             for i in range(self.n_agents):
@@ -95,6 +83,10 @@ class MultiAgent():
             if visualize:
                 viz_data = self.add_visualization_data(viz_data, env, obs, actions, obs)
             done = terminations
+        
+        if self.config.with_lstm:
+            for i in range(self.n_agents):
+                episode_buffers[i]["hidden_states"] = self.agents[i].episode_hidden_states.copy()
 
         for i in range(self.n_agents):
             self.agents[i].episode_data.append(episode_buffers[i])

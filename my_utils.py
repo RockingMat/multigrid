@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from torch.distributions import Categorical
-import torch.nn.functional as F
 
 def compute_gae(rewards, values, gamma, lam):
     advantages = []

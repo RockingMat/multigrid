@@ -6,6 +6,8 @@ from torch.distributions import Categorical
 from abc import ABC, abstractmethod
 from my_utils import train_model as Train
 from RND_network import RND
+import numpy as np
+from my_utils import compute_gae
 
 class BaseAgent(nn.Module, ABC):
     def __init__(self, config):

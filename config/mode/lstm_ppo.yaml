@@ -10,7 +10,7 @@ vf_coef: 0.5
 epsilon: 0.2
 num_epochs: 10
 max_grad_norm: 0.5
-with_lstm: false
+with_lstm: true
 
 # RND
 with_rnd: false

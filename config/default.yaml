@@ -1,4 +1,5 @@
 seed: 1
+device: "cpu"
 
 # RL params
 gamma: 0.99
@@ -25,6 +26,9 @@ cumulants: 64
 filters: 32
 kernel_size: 3
 fc: 256
+lstm_hidden_size: 256
+k1: 50
+k2: 10
 input_dim: 79
 action_dim: 7
 rnd_hidden_size: 256
