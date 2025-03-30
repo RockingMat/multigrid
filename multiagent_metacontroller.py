@@ -3,7 +3,7 @@ import os
 import torch
 import wandb
 from utils import plot_single_frame, make_video
-#from agents.Agents import Agent_Simple as Agent
+# from agents.Agents import Agent_Simple as Agent
 from agents.LSTM_Agent import Agent_LSTM as Agent
 
 class MultiAgent():

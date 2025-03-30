@@ -1,5 +1,5 @@
 #PPO
-learning_rate: 2.5e-4
+learning_rate: 5.0e-4
 lr_annealing: true
 mini_batch_size: 64
 gamma: 0.99
@@ -8,9 +8,14 @@ clip_vloss: true
 ent_coef: 0.0
 vf_coef: 0.5
 epsilon: 0.2
-num_epochs: 10
+num_epochs: 4
 max_grad_norm: 0.5
+
+# LSTM
 with_lstm: true
+lstm_hidden_size: 64
+k1: 50
+k2: 10
 
 # RND
 with_rnd: false
