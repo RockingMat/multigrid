@@ -14,11 +14,9 @@ max_grad_norm: 0.5
 # LSTM
 with_lstm: true
 lstm_hidden_size: 128
-k1: 50
-k2: 10
 
 # RND
-with_rnd: false
+with_rnd: true
 intrinsic_reward_coef: 0.5
 rnd_batch_size: 1024
 rnd_update_every: 5096

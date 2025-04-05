@@ -1,0 +1,65 @@
+program: main.py
+command:
+  - "python"
+  - "main.py"
+  - "--wandb_project"
+  - "hyperparameter_sweep"
+  - "--mode"
+  - "lstm_ppo"
+method: random
+metric:
+  name: total_reward
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.0001
+    max: 0.01
+    distribution: log_uniform_values
+  batch_size:
+    values: [32, 64, 128]
+  n_episodes:
+    value: 5000
+  update_every:
+    min: 50
+    max: 200
+    distribution: uniform
+  rnd_learning_rate: 
+    min: 0.0001
+    max: 0.01
+    distribution: log_uniform_values
+  gamma: 
+    min: 0.9
+    max: 0.999
+    distribution: uniform
+  gae_lambda:
+    min: 0.8
+    max: 0.95
+    distribution: uniform
+  vf_coef:
+    min: 0.1
+    max: 0.5
+    distribution: uniform
+  epsilon:
+    min: 0.1
+    max: 0.3
+    distribution: uniform
+  num_epochs: 
+    values: [1, 2, 4]
+
+  # LSTM
+  lstm_hidden_size: 
+    values: [64, 128, 256]
+
+  # RND
+  with_rnd:
+    value: True
+  intrinsic_reward_coef:  # replace with ent_coef during without_rnd sweep
+    min: 0.0
+    max: 0.5
+    distribution: uniform
+  rnd_batch_size:
+    values: [512, 1024, 2048]
+  rnd_update_every:
+    min: 1000
+    max: 10000
+    distribution: uniform

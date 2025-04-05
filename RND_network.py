@@ -40,13 +40,6 @@ class RNDModel(nn.Module):
 
 class RND(nn.Module):
     def __init__(self, config):
-        """
-        config must have the following attributes:
-            - rnd_hidden_size: hidden dimension for the fc layers.
-            - rnd_output_size: output dimension of the RND networks.
-            - rnd_learning_rate: learning rate for training the predictor.
-            - rnd_batch_size: batch size to sample from the internal buffer for updates.
-        """
         super(RND, self).__init__()
         self.config = config
         
@@ -62,22 +55,12 @@ class RND(nn.Module):
         self.buffer = []
     
     def forward(self, image, direction):
-        """
-        Given batched inputs, compute the outputs of the predictor and target.
-        """
         pred = self.predictor(image, direction)
         with torch.no_grad():
             target_out = self.target(image, direction)
         return pred, target_out
 
     def get_intrinsic_reward(self, image, direction):
-        """
-        Given a single observation:
-            - image: tensor or array of shape (5, 5, 3)
-            - direction: scalar (integer)
-        Computes and returns the intrinsic reward as the mean squared error between
-        the predictor and target network outputs.
-        """
         self.buffer.append((image, direction))
         image = image.unsqueeze(0)
         direction = direction.unsqueeze(0)
@@ -86,9 +69,6 @@ class RND(nn.Module):
         return error.item()
 
     def update(self):
-        """
-        Given a batch of observations, perform one update step on the predictor network.
-        """
         if len(self.buffer) < self.config.rnd_batch_size:
             return
         batch = random.sample(self.buffer, self.config.rnd_batch_size)

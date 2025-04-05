@@ -3,7 +3,6 @@ device: "cpu"
 
 # RL params
 gamma: 0.99
-rl_test_episodes: 100000
 n_actions: 7
 metacontroller: 'multiagent'
 

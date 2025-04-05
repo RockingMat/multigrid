@@ -34,9 +34,8 @@ class BaseLSTMAgent(BaseAgent, ABC):
 
     def episode_forward(self, obs_images, obs_direction):
         T = obs_images.shape[0]
-        device = obs_images.device
-        hidden_state = (torch.zeros(self.lstm.num_layers, 1, self.lstm.hidden_size, device=device),
-                        torch.zeros(self.lstm.num_layers, 1, self.lstm.hidden_size, device=device))
+        hidden_state = (torch.zeros(self.lstm.num_layers, 1, self.lstm.hidden_size),
+                        torch.zeros(self.lstm.num_layers, 1, self.lstm.hidden_size))
         
         logits_seq = []
         values_seq = []

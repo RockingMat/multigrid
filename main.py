@@ -73,7 +73,7 @@ def main(args):
         print('ERROR: when logging to wandb, must specify a valid wandb project.')
         exit(1)
 
-      current_wandb_projects = ['Single-Agent-MultiGrid-Cluttered-Fixed-Single-6x6-v0', 'MultiGrid-Cluttered-Fixed-15x15']  # Add your wandb project here
+      current_wandb_projects = ['Single-Agent-MultiGrid-Cluttered-Fixed-Single-6x6-v0', 'MultiGrid-Cluttered-Fixed-15x15', 'hyperparameter_sweep']  # Add your wandb project here
       if str(args.wandb_project) not in current_wandb_projects:
           print('ERROR: wandb project not in current projects. '
                 'Change the project name or add your new project to the current projects in current_wandb_projects. '
