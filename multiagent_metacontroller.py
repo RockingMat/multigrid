@@ -4,7 +4,7 @@ import torch
 import wandb
 from utils import plot_single_frame, make_video
 # from agents.Agents import Agent_Simple as Agent
-from agents.LSTM_Agent import Agent_LSTM as Agent
+from agents.LSTM_Agent import Agent_LSTM_Complex as Agent
 
 class MultiAgent():
     """This is a meta agent that creates and controls several sub agents."""
@@ -29,15 +29,15 @@ class MultiAgent():
         action = env.action_space.sample()
         obs, reward, terminations, infos = env.step(action)
         done = False
-
         if self.config.with_lstm:
-            for agent in self.agents:
-                agent.reset_hidden_state(batch_size=1)
+            hidden_states = [(
+                torch.zeros(1, 1, self.agents[i].lstm_hidden_size),
+                torch.zeros(1, 1, self.agents[i].lstm_hidden_size)
+            ) for i in range(self.n_agents)]
 
         if visualize:
             viz_data = self.init_visualization_data(env, obs)
 
-        # Create separate episode buffers for each agent.
         episode_buffers = [{
             "obs_images": [],
             "obs_direction": [],
@@ -55,19 +55,26 @@ class MultiAgent():
             self.total_steps += 1
             actions = []
             for i in range(self.n_agents):
-                obs_image_tensor = torch.tensor(obs["image"][i], device=self.device)
-                obs_direction_tensor = torch.tensor(obs["direction"][i], device=self.device)
+                obs_image_tensor = torch.tensor(obs["image"][i])
+                obs_direction_tensor = torch.tensor(obs["direction"][i])
                 episode_buffers[i]["obs_images"].append(obs_image_tensor.clone())
                 episode_buffers[i]["obs_direction"].append(obs_direction_tensor.clone())
-
-                action, log_prob, value = self.agents[i].get_action_and_value(obs_image_tensor.unsqueeze(0), obs_direction_tensor.unsqueeze(0))
+                if self.config.with_lstm:
+                    action, log_prob, value, next_hidden = self.agents[i].get_action_and_value(
+                        obs_image_tensor.unsqueeze(0), obs_direction_tensor.unsqueeze(0), hidden_states[i]
+                    )
+                    hidden_states[i] = next_hidden
+                else:
+                    action, log_prob, value = self.agents[i].get_action_and_value(
+                        obs_image_tensor.unsqueeze(0), obs_direction_tensor.unsqueeze(0)
+                    )
                 if train:
-                    episode_buffers[i]["actions"].append(action.detach().cpu())
-                    episode_buffers[i]["log_probs"].append(log_prob.detach().cpu())
-                    episode_buffers[i]["values"].append(value.detach().cpu())
+                    episode_buffers[i]["actions"].append(action.detach())
+                    episode_buffers[i]["log_probs"].append(log_prob.detach())
+                    episode_buffers[i]["values"].append(value.detach())
                 actions.append(action.detach().cpu().numpy())
 
-            obs, reward, terminations, infos = env.step(actions)
+            obs, reward, done, _ = env.step(actions)
             episode_rewards.append(reward)
             for i in range(self.n_agents):
                 if self.config.with_rnd:
@@ -78,15 +85,9 @@ class MultiAgent():
                         self.agents[i].rnd.update()
                 else:
                     episode_buffers[i]["rewards"].append(reward[i])
-                episode_buffers[i]["dones"].append(terminations)
 
             if visualize:
                 viz_data = self.add_visualization_data(viz_data, env, obs, actions, obs)
-            done = terminations
-        
-        if self.config.with_lstm:
-            for i in range(self.n_agents):
-                episode_buffers[i]["hidden_states"] = self.agents[i].episode_hidden_states.copy()
 
         for i in range(self.n_agents):
             self.agents[i].episode_data.append(episode_buffers[i])
@@ -133,7 +134,6 @@ class MultiAgent():
                 self.get_agent_state(state, i)['image']) for i in range(self.n_agents)])
         viz_data['full_images'].append(env.render('rgb_array'))
         return viz_data
-    
         
     def update_models(self, ep):
         for i in range(self.n_agents):

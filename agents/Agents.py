@@ -6,8 +6,6 @@ from torch.distributions import Categorical
 from abc import ABC, abstractmethod
 from my_utils import train_model as Train
 from RND_network import RND
-import numpy as np
-from my_utils import compute_gae
 
 class BaseAgent(nn.Module, ABC):
     def __init__(self, config):
@@ -19,11 +17,6 @@ class BaseAgent(nn.Module, ABC):
     
     @abstractmethod
     def forward(self, image, direction):
-        """
-        Process the input data (image and direction) and return:
-            logits: action logits for the policy,
-            value: the critic's estimate of the state value.
-        """
         pass
     
     def get_action_and_value(self, image, direction):
@@ -93,7 +86,6 @@ class Agent_Complex(BaseAgent):
     def forward(self, image, direction):
         if direction.dim() > 1:
             direction = direction.squeeze(-1)
-        # Permute image from (B, H, W, C) to (B, C, H, W)
         c = self.cnn(image.permute(0, 3, 1, 2).float())
         d = self.direction_embed(direction.long())
         x = torch.cat([c, d], dim=-1)

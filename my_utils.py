@@ -15,19 +15,6 @@ def compute_gae(rewards, values, gamma, lam):
     return advantages, returns
 
 def train_model(model, ep):
-    """
-    Update the agent's model using PPO.
-
-    Parameters:
-    obs_tensor (Tensor): Batch of observation images.
-    dir_tensor (Tensor): Batch of observation directions.
-    actions_tensor (Tensor): Batch of taken actions.
-    old_log_probs_tensor (Tensor): Batch of log probabilities computed earlier.
-    returns_tensor (Tensor): Batch of computed returns.
-    advantages_tensor (Tensor): Batch of computed advantages.
-    old_values_tensor (Tensor): Batch of value predictions computed earlier.
-    ep (int): Current episode number (for learning rate annealing).
-    """
     obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, returns_tensor, advantages_tensor, old_values_tensor = collect_episode_data(model)
 
     dataset_size = obs_tensor.shape[0]
@@ -59,13 +46,11 @@ def train_model(model, ep):
             new_dist = Categorical(logits=new_logits)
             new_log_probs = new_dist.log_prob(batch_actions.squeeze())
 
-            # policy loss with clipping
             ratio = torch.exp(new_log_probs - batch_old_log_probs.squeeze())
             surr1 = ratio * batch_advantages.squeeze()
             surr2 = torch.clamp(ratio, 1 - epsilon, 1 + epsilon) * batch_advantages.squeeze()
             policy_loss = -torch.min(surr1, surr2).mean()
 
-            # value loss with clipping.
             value_pred_clipped = batch_old_values + (new_values - batch_old_values).clamp(-epsilon, epsilon)
             value_loss_unclipped = (new_values - batch_returns).pow(2)
             value_loss_clipped = (value_pred_clipped - batch_returns).pow(2)
@@ -90,13 +75,12 @@ def collect_episode_data(model):
 
     for episode in model.episode_data:
         rewards = np.array(episode["rewards"])
-        values = torch.stack(episode["values"])  # shape: (T,)
-        # Compute GAE and returns for this episode.
+        values = torch.stack(episode["values"])
         adv, ret = compute_gae(rewards, values.numpy(), model.config.gamma, model.config.gae_lambda)
         advantages = torch.tensor(adv, dtype=torch.float32).unsqueeze(-1)
         returns_tensor = torch.tensor(ret, dtype=torch.float32).unsqueeze(-1)
 
-        obs_tensor = torch.stack(episode["obs_images"])  # shape: (T, ...)
+        obs_tensor = torch.stack(episode["obs_images"])
         dir_tensor = torch.stack(episode["obs_direction"])
         actions_tensor = torch.stack(episode["actions"]).long()
         log_probs_tensor = torch.stack(episode["log_probs"]).float()
@@ -110,7 +94,6 @@ def collect_episode_data(model):
         batch_advantages.append(advantages)
         batch_old_values.append(old_values)
 
-    # Combine all episodes for agent i.
     obs_tensor = torch.cat(batch_obs, dim=0)
     dir_tensor = torch.cat(batch_dir, dim=0)
     actions_tensor = torch.cat(batch_actions, dim=0)
@@ -120,3 +103,49 @@ def collect_episode_data(model):
     advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
     old_values_tensor = torch.cat(batch_old_values, dim=0)
     return obs_tensor, dir_tensor, actions_tensor, old_log_probs_tensor, returns_tensor, advantages_tensor, old_values_tensor
+
+def train_model_lstm(model, ep):
+    epsilon = model.config.epsilon
+
+    if model.config.lr_annealing:
+        frac = 1.0 - (ep - 1) / model.config.n_episodes
+        lr = model.config.learning_rate * frac
+        for param_group in model.optimizer.param_groups:
+            param_group['lr'] = lr
+
+    # PPO update loop.
+    for epoch in range(model.config.num_epochs):
+        for episode in model.episode_data:
+            rewards = np.array(episode["rewards"])
+            values = torch.stack(episode["values"])
+            adv, ret = compute_gae(rewards, values.numpy(), model.config.gamma, model.config.gae_lambda)
+            advantages = torch.tensor(adv, dtype=torch.float32).unsqueeze(-1)
+            returns_tensor = torch.tensor(ret, dtype=torch.float32).unsqueeze(-1)
+
+            obs_tensor = torch.stack(episode["obs_images"])
+            dir_tensor = torch.stack(episode["obs_direction"])
+            actions_tensor = torch.stack(episode["actions"]).long()
+            log_probs_tensor = torch.stack(episode["log_probs"]).float()
+            old_values = torch.stack(episode["values"]).float().unsqueeze(1)
+
+            new_logits, new_values = model.episode_forward(obs_tensor, dir_tensor)
+            new_dist = Categorical(logits=new_logits)
+            new_log_probs = new_dist.log_prob(actions_tensor.squeeze())
+
+            ratio = torch.exp(new_log_probs - log_probs_tensor.squeeze())
+            surr1 = ratio * advantages.squeeze()
+            surr2 = torch.clamp(ratio, 1 - epsilon, 1 + epsilon) * advantages.squeeze()
+            policy_loss = -torch.min(surr1, surr2).mean()
+
+            value_pred_clipped = old_values + (new_values - old_values).clamp(-epsilon, epsilon)
+            value_loss_unclipped = (new_values - returns_tensor).pow(2)
+            value_loss_clipped = (value_pred_clipped - returns_tensor).pow(2)
+            value_loss = torch.max(value_loss_unclipped, value_loss_clipped).mean()
+
+            entropy_bonus = new_dist.entropy().mean()
+            loss = policy_loss + model.config.vf_coef * value_loss - model.config.ent_coef * entropy_bonus
+
+            model.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), model.config.max_grad_norm)
+            model.optimizer.step()
